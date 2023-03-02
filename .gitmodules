@@ -1,3 +1,6 @@
 [submodule "thirdparty/Open3D"]
 	path = thirdparty/Open3D
 	url = git@github.com:isl-org/Open3D.git
+[submodule "thirdparty/ecal-common"]
+	path = thirdparty/ecal-common
+	url = git@github.com:vilota-dev/ecal-common.git
