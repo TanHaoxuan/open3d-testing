@@ -1,37 +1,78 @@
-import open3d as o3d
-import open3d.visualization.gui as gui
+import sys
+import time
 
-
+import capnp
 import numpy as np
 import cv2
 import threading
-import time
+import platform
+
+
+import ecal.core.core as ecal_core
+from byte_subscriber import ByteSubscriber
+
+capnp.add_import_hook(['../thirdparty/ecal-common/src/capnp'])
+
+import image_capnp as eCALImage
+
+import open3d as o3d
+import open3d.visualization.gui as gui
+
+from PIL import Image
+
+isMacOS = (platform.system() == "Darwin")
+
+imshow_map = {}
 
 
 class VideoWindow:
+    MENU_QUIT = 1
 
     def __init__(self):
 
         self.rgb_images = []
-        rgbd_data = o3d.data.SampleRedwoodRGBDImages()
-        for path in rgbd_data.color_paths:
-            img = o3d.io.read_image(path) 
-            self.rgb_images.append(img)
-
-        # path = 
-        # img = o3d.io.read_image(path)
-        # self.rgb_images.append(img)
 
 
         self.window = gui.Application.instance.create_window(
-            "Open3D - Video", 1000, 500)
+            "Open3D - Video", 1280, 800)
+        self.window.set_on_close(self._on_close)
+
+        if gui.Application.instance.menubar is None:
+            if isMacOS:
+                app_menu = gui.Menu()
+                app_menu.add_item("Quit", VideoWindow.MENU_QUIT)
+            debug_menu = gui.Menu()
+            if not isMacOS:
+                debug_menu.add_separator()
+                debug_menu.add_item("Quit", VideoWindow.MENU_QUIT)
+
+            menu = gui.Menu()
+            if isMacOS:
+                # macOS will name the first menu item for the running application
+                # (in our case, probably "Python"), regardless of what we call
+                # it. This is the application menu, and it is where the
+                # About..., Preferences..., and Quit menu items typically go.
+                menu.add_menu("Example", app_menu)
+                menu.add_menu("Debug", debug_menu)
+            else:
+                menu.add_menu("Debug", debug_menu)
+            gui.Application.instance.menubar = menu
+
+        # The menubar is global, but we need to connect the menu items to the
+        # window, so that the window can call the appropriate function when the
+        # menu item is activated.
+
+        self.window.set_on_menu_item_activated(VideoWindow.MENU_QUIT,
+                                               self._on_menu_quit)
+
+
 
 
         em = self.window.theme.font_size
         margin = 0.5 * em
         self.panel = gui.Vert(0.5 * em, gui.Margins(margin))
         self.panel.add_child(gui.Label("Color image"))
-        self.rgb_widget = gui.ImageWidget(self.rgb_images[0])
+        self.rgb_widget = gui.ImageWidget("your_file.jpg")
         self.panel.add_child(self.rgb_widget)
         self.window.add_child(self.panel)        
         
@@ -41,15 +82,27 @@ class VideoWindow:
     def _update_thread(self):
             # This is NOT the UI thread, need to call post_to_main_thread() to update
             # the scene or any part of the UI.
-            idx = 0
+            rgb_frame = o3d.io.read_image("your_file.jpg")
+
             while not self.is_done:
                 time.sleep(0.100)
 
                 # Get the next frame, for instance, reading a frame from the camera.
-                rgb_frame = self.rgb_images[idx]
-                idx += 1
-                if idx >= len(self.rgb_images):
-                    idx = 0
+                for im in imshow_map:
+                    print("I am updating")
+
+                    img_ndarray = imshow_map[im] #img_ndarray -> ndarray
+                    # print(type(img_ndarray))
+                    img_ndarray = np.reshape(img_ndarray, (800, 1280))
+               
+                    img_jpg = Image.fromarray(img_ndarray)
+                    img_jpg.save("your_file.jpg")
+
+
+                    rgb_frame = o3d.io.read_image("your_file.jpg")
+                    # print(type(rgb_frame))
+
+
 
                 # Update the images. This must be done on the UI thread.
                 def update():
@@ -58,18 +111,86 @@ class VideoWindow:
                 if not self.is_done:
                     gui.Application.instance.post_to_main_thread(
                         self.window, update)
+    
+    
+    def _on_close(self):
+        self.is_done = True
+        return True  # False would cancel the close
+    
+    def _on_menu_quit(self):
+        gui.Application.instance.quit()
 
 
 
+def callback(topic_name, msg, ts):
 
+    # need to remove the .decode() function within the Python API of ecal.core.subscriber StringSubscriber
+    with eCALImage.Image.from_bytes(msg) as imageMsg:
+        print(f"seq = {imageMsg.header.seq}, stamp = {imageMsg.header.stamp}, with {len(msg)} bytes, encoding = {imageMsg.encoding}")
+        # print(f"width = {imageMsg.width}, height = {imageMsg.height}")
+        # print(f"exposure = {imageMsg.exposureUSec}, gain = {imageMsg.gain}")
+        # print(f"intrinsic = {imageMsg.intrinsic}")
+        # print(f"extrinsic = {imageMsg.extrinsic}")
+
+        if (imageMsg.encoding == "mono8"):
+
+            mat = np.frombuffer(imageMsg.data, dtype=np.uint8)
+            mat = mat.reshape((imageMsg.height, imageMsg.width, 1))
+
+            imshow_map[topic_name + " mono8"] = mat
+
+            # cv2.imshow("mono8", mat)
+            # cv2.waitKey(3)
+        elif (imageMsg.encoding == "yuv420"):
+            mat = np.frombuffer(imageMsg.data, dtype=np.uint8)
+            mat = mat.reshape((imageMsg.height * 3 // 2, imageMsg.width, 1))
+
+            mat = cv2.cvtColor(mat, cv2.COLOR_YUV2BGR_IYUV)
+
+            imshow_map[topic_name + " yuv420"] = mat
+            # cv2.imshow("yuv420", mat)
+            # cv2.waitKey(3)
+        elif (imageMsg.encoding == "bgr8"):
+            mat = np.frombuffer(imageMsg.data, dtype=np.uint8)
+            mat = mat.reshape((imageMsg.height, imageMsg.width, 3))
+            imshow_map[topic_name + " bgr8"] = mat
+        elif (imageMsg.encoding == "jpeg"):
+            mat_jpeg = np.frombuffer(imageMsg.data, dtype=np.uint8)
+            mat = cv2.imdecode(mat_jpeg, cv2.IMREAD_COLOR)
+            imshow_map[topic_name + " jpeg"] = mat
+        else:
+            raise RuntimeError("unknown encoding: " + imageMsg.encoding)
 
 
 def main():
+     # print eCAL version and date
+    print("eCAL {} ({})\n".format(ecal_core.getversion(), ecal_core.getdate()))
+    
+    # initialize eCAL API
+    ecal_core.initialize(sys.argv, "test_image_sub")
+    
+    # set process state
+    ecal_core.set_process_state(1, 1, "I feel good")
+
+    # create subscriber and connect callback
+
+    n = len(sys.argv)
+    if n == 1:
+        topic = "S0/camd"
+    elif n == 2:
+        topic = sys.argv[1]
+    else:
+        raise RuntimeError("Need to pass in exactly one parameter for topic")
+
+    print(f"Streaming topic {topic}")
+    sub = ByteSubscriber(topic)
+    sub.set_callback(callback)
+    
+
     app = gui.Application.instance
     app.initialize()
 
     win = VideoWindow()
-
 
     app.run()
 
