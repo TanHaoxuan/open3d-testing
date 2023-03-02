@@ -1,0 +1,3 @@
+[submodule "thirdparty/Open3D"]
+	path = thirdparty/Open3D
+	url = git@github.com:isl-org/Open3D.git
