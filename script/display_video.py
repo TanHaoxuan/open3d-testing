@@ -72,7 +72,7 @@ class VideoWindow:
         margin = 0.5 * em
         self.panel = gui.Vert(0.5 * em, gui.Margins(margin))
         self.panel.add_child(gui.Label("Color image"))
-        self.rgb_widget = gui.ImageWidget("your_file.jpg")
+        self.rgb_widget = gui.ImageWidget()
         self.panel.add_child(self.rgb_widget)
         self.window.add_child(self.panel)        
         
@@ -96,15 +96,8 @@ class VideoWindow:
                     #convert numpy array to 3 channel (800,1280,3)
                     img_ndarray=np.repeat(img_ndarray, 3, axis=2)
 
-                    # print("shape of img_array", img_ndarray.shape)
-                    # print(img_ndarray)
-
                     #convert numpy array to open3d image
                     rgb_frame = o3d.geometry.Image(img_ndarray)
-                    print(type(rgb_frame))
-                    print(rgb_frame)
-                    # print(rgb_frame.channels)
-
 
 
                 # Update the images. This must be done on the UI thread.
