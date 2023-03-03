@@ -82,25 +82,28 @@ class VideoWindow:
     def _update_thread(self):
             # This is NOT the UI thread, need to call post_to_main_thread() to update
             # the scene or any part of the UI.
-            rgb_frame = o3d.io.read_image("your_file.jpg")
-
+            img_ndarray = np.zeros((800,1280,3), dtype=np.uint8)
+            rgb_frame = o3d.geometry.Image(img_ndarray)
             while not self.is_done:
                 time.sleep(0.100)
 
                 # Get the next frame, for instance, reading a frame from the camera.
                 for im in imshow_map:
-                    print("I am updating")
 
-                    img_ndarray = imshow_map[im] #img_ndarray -> ndarray
-                    # print(type(img_ndarray))
-                    img_ndarray = np.reshape(img_ndarray, (800, 1280))
-               
-                    img_jpg = Image.fromarray(img_ndarray)
-                    img_jpg.save("your_file.jpg")
+                    #get the numpy array (800,1280,1)
+                    img_ndarray = imshow_map[im] 
 
+                    #convert numpy array to 3 channel (800,1280,3)
+                    img_ndarray=np.repeat(img_ndarray, 3, axis=2)
 
-                    rgb_frame = o3d.io.read_image("your_file.jpg")
-                    # print(type(rgb_frame))
+                    # print("shape of img_array", img_ndarray.shape)
+                    # print(img_ndarray)
+
+                    #convert numpy array to open3d image
+                    rgb_frame = o3d.geometry.Image(img_ndarray)
+                    print(type(rgb_frame))
+                    print(rgb_frame)
+                    # print(rgb_frame.channels)
 
 
 
@@ -126,7 +129,7 @@ def callback(topic_name, msg, ts):
 
     # need to remove the .decode() function within the Python API of ecal.core.subscriber StringSubscriber
     with eCALImage.Image.from_bytes(msg) as imageMsg:
-        print(f"seq = {imageMsg.header.seq}, stamp = {imageMsg.header.stamp}, with {len(msg)} bytes, encoding = {imageMsg.encoding}")
+        # print(f"seq = {imageMsg.header.seq}, stamp = {imageMsg.header.stamp}, with {len(msg)} bytes, encoding = {imageMsg.encoding}")
         # print(f"width = {imageMsg.width}, height = {imageMsg.height}")
         # print(f"exposure = {imageMsg.exposureUSec}, gain = {imageMsg.gain}")
         # print(f"intrinsic = {imageMsg.intrinsic}")
@@ -136,7 +139,6 @@ def callback(topic_name, msg, ts):
 
             mat = np.frombuffer(imageMsg.data, dtype=np.uint8)
             mat = mat.reshape((imageMsg.height, imageMsg.width, 1))
-
             imshow_map[topic_name + " mono8"] = mat
 
             # cv2.imshow("mono8", mat)
