@@ -25,9 +25,13 @@ from utils import SyncedImageSubscriber, image_resize
 
 isMacOS = (platform.system() == "Darwin")
 
-image_dict={}
+# store the meta data from ecal
+image_dict = {}
+# store the image used in gui display
+rgb_frame_dict = {}
 
-class RosbagDatasetRecorder:
+
+class Recorder:
 
     def __init__(self, image_topics):
 
@@ -39,13 +43,13 @@ class VideoWindow:
 
     def __init__(self):
 
-        self.rgb_images = []
 
-
+        # configure window
         self.window = gui.Application.instance.create_window(
-            "Open3D - Video", 640, 1200)
+            "Open3D - Video", 4000, 800)
         self.window.set_on_close(self._on_close)
 
+        # configure menu
         if gui.Application.instance.menubar is None:
             if isMacOS:
                 app_menu = gui.Menu()
@@ -76,22 +80,23 @@ class VideoWindow:
 
 
 
-
+        # configure gui
         em = self.window.theme.font_size
         margin = 0.5 * em
-        self.panel = gui.Vert(0.5 * em, gui.Margins(margin))
+        self.panel = gui.Horiz(0.5 * em, gui.Margins(margin))
 
-        self.rgb_widget_1 = gui.ImageWidget(o3d.geometry.Image(np.zeros((400,640,1), dtype=np.uint8)))
-        self.rgb_widget_2 = gui.ImageWidget(o3d.geometry.Image(np.zeros((400,640,1), dtype=np.uint8)))
-        self.rgb_widget_3 = gui.ImageWidget(o3d.geometry.Image(np.zeros((400,640,1), dtype=np.uint8)))
+        self.rgb_widget_1 = gui.ImageWidget(o3d.geometry.Image(np.zeros((800,1280,1), dtype=np.uint8)))
+        self.rgb_widget_2 = gui.ImageWidget(o3d.geometry.Image(np.zeros((800,1280,1), dtype=np.uint8)))
+        self.rgb_widget_3 = gui.ImageWidget(o3d.geometry.Image(np.zeros((800,1280,1), dtype=np.uint8)))
 
         self.panel.add_child(self.rgb_widget_1)
         self.panel.add_child(self.rgb_widget_2)
         self.panel.add_child(self.rgb_widget_3)
 
         self.window.add_child(self.panel)        
-        self.rgb_frame = []
+        
 
+        # start image updating thread
         self.is_done = False
         threading.Thread(target=self._update_thread).start()
 
@@ -99,44 +104,52 @@ class VideoWindow:
             # This is NOT the UI thread, need to call post_to_main_thread() to update
             # the scene or any part of the UI.
             global image_dict
+            global rgb_frame_dict
             while not self.is_done:
 
                 time.sleep(0.100)
 
-                # Get the next frame, for instance, reading a frame from the camera.
-                if (len(self.rgb_frame) == 0):
+            # Get the next frame, for instance, reading a frame from the camera.
+                if (len(rgb_frame_dict) == 0):
 
                     print(len(image_dict))
 
                     for imageName in image_dict:
-
                         imageMsg = image_dict[imageName]
-
-                        #get the numpy array (800,1280,1)
                         img_ndarray = np.frombuffer(imageMsg.data, dtype=np.uint8)
+                        img_ndarray = img_ndarray.reshape((imageMsg.height, imageMsg.width, 1))
+                        # print("raw shape = ",img_ndarray.shape)
+
+                        # img_ndarray = image_resize(img_ndarray, width=640)
+                        
+                        # dim = (640, 400,1)
+                        # # resize image
+                        # img_ndarray = cv2.resize(img_ndarray, dim, interpolation = cv2.INTER_NEAREST)
+                        # print("after resize = ",img_ndarray.shape)
 
                         #convert numpy array to 3 channel (800,1280,3)
-                        # img_ndarray=np.repeat(img_ndarray, 3, axis=2)
+                        img_ndarray = np.repeat(img_ndarray, 3, axis=2)
+                        # print("after extend to 3 channels = ",img_ndarray.shape)
 
-                        # print("shape of img_array", img_ndarray.shape)
-                        # print(img_ndarray)
-
+                        # make sure img_ndarray (800,1280,3)
                         #convert numpy array to open3d image
-                        self.rgb_frame.append(o3d.geometry.Image(img_ndarray))
-                        print(type(self.rgb_frame[0]))
-                        # print(rgb_frame)
-                        # print(rgb_frame.channels)
+                        rgb_frame_dict[imageName] = o3d.geometry.Image(img_ndarray)
+                    
 
 
 
                 # Update the images. This must be done on the UI thread.
                 def update():
-                    if(len(self.rgb_frame) == 3):
-                        print("I am updating")
-                        self.rgb_widget_1.update_image(self.rgb_frame[0])
-                        self.rgb_widget_2.update_image(self.rgb_frame[1])
-                        self.rgb_widget_3.update_image(self.rgb_frame[2])
-                        self.rgb_frame = []
+                    global rgb_frame_dict
+                    if(len(rgb_frame_dict) == 3):
+                        print("I am updating rgb_frame_dict")
+                        # print(type(rgb_frame_dict["S0/camd"]))
+                        self.rgb_widget_1.update_image(rgb_frame_dict["S0/camb"])
+                        self.rgb_widget_2.update_image(rgb_frame_dict["S0/camc"])
+                        self.rgb_widget_3.update_image(rgb_frame_dict["S0/camd"])
+
+                        # suspecting race condition here
+                        # rgb_frame_dict = {}
 
                 if not self.is_done:
                     gui.Application.instance.post_to_main_thread(
@@ -156,6 +169,8 @@ class VideoWindow:
 
 def read_img():
 
+    global image_dict
+    
     # PRINT ECAL VERSION AND DATE
     print("eCAL {} ({})\n".format(ecal_core.getversion(), ecal_core.getdate()))
     
@@ -168,10 +183,9 @@ def read_img():
     # SET UP SUBSCRIBER
     image_topics = ["S0/camb","S0/camc","S0/camd"]
     
-    recorder = RosbagDatasetRecorder(image_topics)
+    recorder = Recorder(image_topics)
     recorder.image_sub.rolling = True   # ensure self.image_sub.pop_sync_queue() works
 
-    global image_dict
 
     while ecal_core.ok():
         # READ IN DATA
@@ -189,11 +203,12 @@ def read_img():
 
 def main(): 
     
-   
+
     # NEW THREAD FOR IMAGE READING
     img_reading_thread= threading.Thread(target=read_img)
     img_reading_thread.start()
 
+    time.sleep(3)
 
     app = gui.Application.instance
     app.initialize()
