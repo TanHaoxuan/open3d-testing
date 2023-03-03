@@ -34,7 +34,7 @@ class VideoWindow:
 
 
         self.window = gui.Application.instance.create_window(
-            "Open3D - Video", 1280, 800)
+            "Open3D - Video", 1280, 1000)
         self.window.set_on_close(self._on_close)
 
         if gui.Application.instance.menubar is None:
@@ -75,7 +75,31 @@ class VideoWindow:
         self.rgb_widget = gui.ImageWidget()
         self.panel.add_child(self.rgb_widget)
         self.window.add_child(self.panel)        
-        
+
+        collapse = gui.CollapsableVert("Widgets", 0.33 * em,
+                                       gui.Margins(em, 0, 0, 0))
+        self._label = gui.Label("control")
+        self._label.text_color = gui.Color(1.0, 0.5, 0.0)
+
+        collapse.add_child(self._label)
+        cb = gui.Checkbox("Start streaming")
+        cb.set_on_checked(self._on_cb)  # set the callback function
+        collapse.add_child(cb)
+
+
+
+        self.panel.add_child(collapse)
+
+
+
+
+
+
+
+
+
+        self.streaming_status = False
+
         self.is_done = False
         threading.Thread(target=self._update_thread).start()
 
@@ -102,7 +126,9 @@ class VideoWindow:
 
                 # Update the images. This must be done on the UI thread.
                 def update():
-                    self.rgb_widget.update_image(rgb_frame)
+                    if self.streaming_status:
+                        self.rgb_widget.update_image(rgb_frame)
+                    
 
                 if not self.is_done:
                     gui.Application.instance.post_to_main_thread(
@@ -115,6 +141,13 @@ class VideoWindow:
     
     def _on_menu_quit(self):
         gui.Application.instance.quit()
+
+    def _on_cb(self, is_checked):
+        if is_checked:
+            self.streaming_status = True
+        else:
+            self.streaming_status = False
+
 
 
 
