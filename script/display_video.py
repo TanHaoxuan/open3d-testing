@@ -11,7 +11,7 @@ import platform
 import ecal.core.core as ecal_core
 from byte_subscriber import ByteSubscriber
 
-capnp.add_import_hook(['../thirdparty/ecal-common/src/capnp'])
+capnp.add_import_hook(['../src/capnp'])
 
 import image_capnp as eCALImage
 
@@ -23,6 +23,8 @@ from PIL import Image
 isMacOS = (platform.system() == "Darwin")
 
 imshow_map = {}
+
+exposure_string = ""
 
 
 class VideoWindow:
@@ -72,6 +74,10 @@ class VideoWindow:
         margin = 0.5 * em
         self.panel = gui.Vert(0.5 * em, gui.Margins(margin))
         self.panel.add_child(gui.Label("Color image"))
+        exposure_label = gui.Label("exposure : " + exposure_string)
+        exposure_label.text = exposure_string+"hello"
+        self.panel.add_child(exposure_label)
+        
         self.rgb_widget = gui.ImageWidget()
         self.panel.add_child(self.rgb_widget)
         self.window.add_child(self.panel)        
@@ -162,9 +168,18 @@ def callback(topic_name, msg, ts):
         # print(f"extrinsic = {imageMsg.extrinsic}")
 
         if (imageMsg.encoding == "mono8"):
+            exposure_string = str(imageMsg.exposureUSec)
 
             mat = np.frombuffer(imageMsg.data, dtype=np.uint8)
             mat = mat.reshape((imageMsg.height, imageMsg.width, 1))
+            
+            expTime_display = str(imageMsg.exposureUSec)
+            sensIso_display = str(imageMsg.gain)
+
+            mat = cv2.putText(mat, "expTIme = " + expTime_display, (100,100), cv2.FONT_HERSHEY_TRIPLEX, 2, (255,0,0), 2)
+            mat = cv2.putText(mat, "sensIso = " + sensIso_display, (100,200), cv2.FONT_HERSHEY_TRIPLEX, 2, (255,0,0), 2)            
+            
+            
             imshow_map[topic_name + " mono8"] = mat
 
             # cv2.imshow("mono8", mat)
