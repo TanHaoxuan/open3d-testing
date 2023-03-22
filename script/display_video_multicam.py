@@ -447,8 +447,10 @@ def read_img(window):
         vio_sub.set_callback(vio_callback)
 
 
+
     synced_recorder = SyncedRecorder(image_topics)
     synced_recorder.image_sub.rolling = True   # ensure self.image_sub.pop_sync_queue() works
+
 
 
     def update_frame(imageName,img_ndarray):
@@ -619,4 +621,7 @@ def main():
         
 
 if __name__ == "__main__":
+
     main() 
+
+
