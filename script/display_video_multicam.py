@@ -24,19 +24,16 @@ import open3d.visualization.gui as gui
 
 from PIL import Image
 
-from utils import SyncedImageSubscriber
+from utils import SyncedImageSubscriber, AsyncedImageSubscriber, VioSubscriber, add_ui_on_ndarray
 
 isMacOS = (platform.system() == "Darwin")
 
 image_topics = []
 flag_dict = {}
 flag_dict['vio_status'] = False
+flag_dict['synced_status'] = False
+flag_dict['thumbnail_status'] = False
 
-class SyncedRecorder:
-
-    def __init__(self, image_topics):
-
-        self.image_sub = SyncedImageSubscriber(image_topics)
 
 class ChooseWindow:
 
@@ -44,15 +41,10 @@ class ChooseWindow:
         
         self.is_done = False
         
-        self.status_cama = False
-        self.status_camb = False
-        self.status_camc = False
-        self.status_camd = False
-        self.status_vio = False
 
         # CONFIGURE WINDOW
         self.window = gui.Application.instance.create_window(
-            "Camera confirm", 500, 300)
+            "Camera confirm", 500, 350)
         self.window.set_on_layout(self._on_layout)
         self.window.set_on_close(self._on_close) 
         
@@ -63,29 +55,34 @@ class ChooseWindow:
         
         self.panel_main = gui.Vert(0.5 * em, gui.Margins(margin))
 
-        self.label_description = gui.Label("Please choose the avaliable camera and click 'Ok'.")
+        self.label_description = gui.Label("Please choose the avaliable camera.")
         self.label_description.text_color = gui.Color(1.0, 0.5, 0.0)
         self.panel_main.add_child(self.label_description)
 
-        cb_cama = gui.Checkbox("cam_a")
-        cb_cama.set_on_checked(self._on_cb_cama)  # set the callback function
-        self.panel_main.add_child(cb_cama)
+        self.cb_cama = gui.Checkbox("cam_a")
+        self.panel_main.add_child(self.cb_cama)
 
-        cb_camb = gui.Checkbox("cam_b")
-        cb_camb.set_on_checked(self._on_cb_camb)  
-        self.panel_main.add_child(cb_camb)
+        self.cb_camb = gui.Checkbox("cam_b")
+        self.panel_main.add_child(self.cb_camb)
 
-        cb_camc = gui.Checkbox("cam_c")
-        cb_camc.set_on_checked(self._on_cb_camc)  
-        self.panel_main.add_child(cb_camc)
+        self.cb_camc = gui.Checkbox("cam_c")
+        self.panel_main.add_child(self.cb_camc)
 
-        cb_camd = gui.Checkbox("cam_d")
-        cb_camd.set_on_checked(self._on_cb_camd)  
-        self.panel_main.add_child(cb_camd)
+        self.cb_camd = gui.Checkbox("cam_d")
+        self.panel_main.add_child(self.cb_camd)
 
-        cb_vio = gui.Checkbox("vio is on")
-        cb_vio.set_on_checked(self._on_cb_vio)  
-        self.panel_main.add_child(cb_vio)
+        self.label_description = gui.Label("Please choose the specific features.")
+        self.label_description.text_color = gui.Color(1.0, 0.5, 0.0)
+        self.panel_main.add_child(self.label_description)
+
+        self.cb_vio = gui.Checkbox("vio is on")
+        self.panel_main.add_child(self.cb_vio)
+
+        self.cb_synced = gui.Checkbox("use synced image (default asynced)")
+        self.panel_main.add_child(self.cb_synced)
+
+        self.cb_thumbnail = gui.Checkbox("use thumbnail image (default normal)")
+        self.panel_main.add_child(self.cb_thumbnail)
         
         self.window.add_child(self.panel_main) 
 
@@ -115,55 +112,37 @@ class ChooseWindow:
                                 50)
 
 
-
-
     def _on_close(self):
         self.is_done = True
         return True  # False would cancel the close
 
-
-    def _on_cb_cama(self, is_checked):
-        if is_checked:
-            self.status_cama = True
-        else:
-            self.status_cama = False
-    
-    def _on_cb_camb(self, is_checked):
-        if is_checked:
-            self.status_camb = True
-        else:
-            self.status_camb = False    
-    
-    def _on_cb_camc(self, is_checked):
-        if is_checked:
-            self.status_camc = True
-        else:
-            self.status_camc = False    
-    
-    def _on_cb_camd(self, is_checked):
-        if is_checked:
-            self.status_camd = True
-        else:
-            self.status_camd = False
-    
-    def _on_cb_vio(self, is_checked):
-        if is_checked:
-            self.status_vio = True
-        else:
-            self.status_vio = False
-    
     def _on_ok(self):
-
-        if self.status_cama:
-            image_topics.append("S0/cama")
-        if self.status_camb:
-            image_topics.append("S0/camb")        
-        if self.status_camc:
-            image_topics.append("S0/camc")        
-        if self.status_camd:
-            image_topics.append("S0/camd")
-        if self.status_vio:
+        if self.cb_thumbnail.checked:
+            flag_dict['thumbnail_status'] = True
+            if self.cb_cama.checked:
+                image_topics.append("S0/thumbnail/cama")
+            if self.cb_camb.checked:
+                image_topics.append("S0/thumbnail/camb") 
+            if self.cb_camc.checked:
+                image_topics.append("S0/thumbnail/camc")
+            if self.cb_camd.checked:
+                image_topics.append("S0/thumbnail/camd")
+        else:
+            if self.cb_cama.checked:
+                image_topics.append("S0/cama")
+            if self.cb_camb.checked:
+                image_topics.append("S0/camb") 
+            if self.cb_camc.checked:
+                image_topics.append("S0/camc")
+            if self.cb_camd.checked:
+                image_topics.append("S0/camd")
+        
+        if self.cb_vio.checked:
             flag_dict['vio_status'] = True
+        
+        if self.cb_synced.checked:
+            flag_dict['synced_status'] = True
+
         
         print(f"Subscribing to {image_topics}")
 
@@ -179,10 +158,6 @@ class VideoWindow:
                 
         self.is_done = False
 
-        # self.streaming_status_cama = False
-        # self.streaming_status_camb = False
-        # self.streaming_status_camc = False
-        # self.streaming_status_camd = False
 
         self.expTime_display_flag = False
         self.sensIso_display_flag = False
@@ -240,22 +215,18 @@ class VideoWindow:
         self.collapse.add_child(self.label_camera_control)
         
         self.cb_cama = gui.Checkbox("Start streaming cama")
-        # self.cb_cama.set_on_checked(self._on_cb_cama)  # set the callback function
         self.cb_cama.checked = True
         self.collapse.add_child(self.cb_cama)
 
         self.cb_camb = gui.Checkbox("Start streaming camb")
-        # self.cb_camb.set_on_checked(self._on_cb_camb)  # set the callback function
         self.cb_camb.checked = True
         self.collapse.add_child(self.cb_camb)
 
         self.cb_camc = gui.Checkbox("Start streaming camc")
-        # self.cb_camc.set_on_checked(self._on_cb_camc)  # set the callback function
         self.cb_camc.checked = True
         self.collapse.add_child(self.cb_camc)
 
         self.cb_camd = gui.Checkbox("Start streaming camd")
-        # self.cb_camd.set_on_checked(self._on_cb_camd)  # set the callback function
         self.cb_camd.checked = True
         self.collapse.add_child(self.cb_camd)
         
@@ -278,7 +249,14 @@ class VideoWindow:
         switch_latencyHost = gui.ToggleSwitch("Display latencyHost")
         switch_latencyHost.set_on_clicked(self._on_switch_latencyHost)
         self.collapse.add_child(switch_latencyHost)
+            
+        self.label_info = gui.Label("Streaming mode")
+        self.label_info.text_color = gui.Color(1.0, 0.5, 0.0)
+        self.collapse.add_child(self.label_info)
 
+        self.synced_label = gui.Label("")
+        self.collapse.add_child(self.synced_label)
+        
         self.label_info = gui.Label("Vio Information")
         self.label_info.text_color = gui.Color(1.0, 0.5, 0.0)
         self.collapse.add_child(self.label_info)
@@ -348,29 +326,6 @@ class VideoWindow:
     def _on_menu_quit(self):
         gui.Application.instance.quit()
 
-    # def _on_cb_cama(self, is_checked):
-    #     if is_checked:
-    #         self.streaming_status_cama = True
-    #     else:
-    #         self.streaming_status_cama = False
-    
-    # def _on_cb_camb(self, is_checked):
-    #     if is_checked:
-    #         self.streaming_status_camb = True
-    #     else:
-    #         self.streaming_status_camb = False    
-    
-    # def _on_cb_camc(self, is_checked):
-    #     if is_checked:
-    #         self.streaming_status_camc = True
-    #     else:
-    #         self.streaming_status_camc = False    
-    
-    # def _on_cb_camd(self, is_checked):
-    #     if is_checked:
-    #         self.streaming_status_camd = True
-    #     else:
-    #         self.streaming_status_camd = False
     
     def _on_switch_expTime(self, is_on):
         if is_on:
@@ -398,7 +353,6 @@ class VideoWindow:
     
 
 
-vio_msg = ""
 
 
 def read_img(window):
@@ -413,57 +367,37 @@ def read_img(window):
     # SET PROCESS STATE
     ecal_core.set_process_state(1, 1, "I feel good")
 
-    # print(type(ecal_core.mon_monitoring()[1]))
-
-    
-
-    def vio_callback(topic_name, msg, time):
-
-        global vio_msg
-        # need to remove the .decode() function within the Python API of ecal.core.subscriber ByteSubscriber
-        
-        with eCALOdometry3d.Odometry3d.from_bytes(msg) as odometryMsg:
-
-
-            # if first_message:
-            #     print(f"bodyFrame = {odometryMsg.bodyFrame}")
-            #     print(f"referenceFrame = {odometryMsg.referenceFrame}")
-            #     print(f"velocityFrame = {odometryMsg.velocityFrame}")
-            #     first_message = False
-
-            position_msg = f"position: \n {odometryMsg.pose.position.x:.4f}, {odometryMsg.pose.position.y:.4f}, {odometryMsg.pose.position.z:.4f}"
-            orientation_msg = f"orientation: \n  {odometryMsg.pose.orientation.w:.4f}, {odometryMsg.pose.orientation.x:.4f}, {odometryMsg.pose.orientation.y:.4f}, {odometryMsg.pose.orientation.z:.4f}"
-            
-
-            device_latency_msg = f"device latency = {odometryMsg.header.latencyDevice / 1e6 : .2f} ms"
-            
-            vio_host_latency = monotonic() *1e9 - odometryMsg.header.stamp 
-            host_latency_msg = f"host latency = {vio_host_latency / 1e6 :.2f} ms"
-            
-            vio_msg = position_msg + "\n" + orientation_msg + "\n" + device_latency_msg + "\n" + host_latency_msg
-
+    # set up vio subscriber
     if (flag_dict['vio_status']):
-        vio_sub = ByteSubscriber("S0/vio_odom")
-        vio_sub.set_callback(vio_callback)
+        vio_sub = VioSubscriber("S0/vio_odom")
+    else:
+        window.proxy_vio.set_widget(gui.Label("vio is not on"))
+    
+    # set up image subscriber
+    if (flag_dict['synced_status']):
+        window.synced_label.text = "Synced images"
+        synced_recorder = SyncedImageSubscriber(image_topics)
+        synced_recorder.rolling = True
+    else:
+        window.synced_label.text = "Asynced images"
+        asynced_recorder = AsyncedImageSubscriber(image_topics)
+        asynced_recorder.rolling = True
 
 
-
-    synced_recorder = SyncedRecorder(image_topics)
-    synced_recorder.image_sub.rolling = True   # ensure self.image_sub.pop_sync_queue() works
-
+ 
 
 
     def update_frame(imageName,img_ndarray):
-        if(imageName == 'S0/cama' and window.cb_cama.checked):
+        if(('cama' in imageName) and window.cb_cama.checked):
             window.rgb_widget_1.update_image(o3d.geometry.Image(img_ndarray))
 
-        if(imageName == 'S0/camb' and window.cb_camb.checked):
+        if(('camb' in imageName) and window.cb_camb.checked):
             window.rgb_widget_2.update_image(o3d.geometry.Image(img_ndarray))
         
-        if(imageName == 'S0/camc' and window.cb_camc.checked):
+        if(('camc' in imageName) and window.cb_camc.checked):
             window.rgb_widget_3.update_image(o3d.geometry.Image(img_ndarray))
         
-        if(imageName == 'S0/camd' and window.cb_camd.checked):
+        if(('camd' in imageName) and window.cb_camd.checked):
             window.rgb_widget_4.update_image(o3d.geometry.Image(img_ndarray))
 
 
@@ -480,36 +414,15 @@ def read_img(window):
         window.window.set_needs_layout() 
         
 
-    expMin = 10
-    expMax = 12000
-    sensMin = 100
-    sensMax = 800
-    
-    progress_bar_length = 200
-    progress_bar_height = 15
-    
-    left_x = 10
-    
-    left_y_pb1 = 30
-    spacing_2pb = 30
-    left_y_pb2 = left_y_pb1 + progress_bar_height + spacing_2pb
-
-    expTime_frame_start = (left_x, left_y_pb1)
-    expTime_frame_end = (left_x + progress_bar_length, left_y_pb1 + progress_bar_height)
-    
-    sensIso_frame_start = (left_x,left_y_pb2)
-    sensIso_frame_end = (left_x + progress_bar_length, left_y_pb2 + progress_bar_height)
-
-    spacing_pb_text = 40
-    spacing_2text = 20
-    latencyDevice_coor = (left_x, left_y_pb2 + progress_bar_height + spacing_pb_text)
-    latencyHost_coor = (left_x, left_y_pb2 + progress_bar_height + spacing_pb_text + spacing_2text)
 
     while ecal_core.ok():
 
-        # READ IN DATA
-        ecal_images = synced_recorder.image_sub.pop_sync_queue()
-        
+        # synced mode
+        if (flag_dict['synced_status']):
+            ecal_images = synced_recorder.pop_sync_queue()
+        else:
+            ecal_images = asynced_recorder.pop_async_queue()
+
         for imageName in ecal_images:
 
             imageMsg = ecal_images[imageName]
@@ -536,57 +449,32 @@ def read_img(window):
             #convert numpy array to 3 channel
             img_ndarray = np.repeat(img_ndarray.reshape(dim[1], dim[0], 1), 3, axis=2)
 
-
-            if window.expTime_display_flag:
-                # add progress bar
-                expTime_length = int((imageMsg.exposureUSec - expMin) / (expMax - expMin) * progress_bar_length)
-                img_ndarray = cv2.rectangle(img_ndarray, expTime_frame_start, (left_x + expTime_length, expTime_frame_end[1]), (255, 0, 0),-1)
-                # add progress bar frame
-                img_ndarray = cv2.rectangle(img_ndarray, expTime_frame_start, expTime_frame_end, (255, 255, 255),2)
-                # add description
-                img_ndarray = cv2.putText(img_ndarray, 'expTime', (expTime_frame_end[0]+5, expTime_frame_start[1]), cv2.FONT_HERSHEY_TRIPLEX, 0.5, (255, 0, 0), 1)
-                img_ndarray = cv2.putText(img_ndarray, str(expMin), (expTime_frame_start[0],expTime_frame_end[1]+15), cv2.FONT_HERSHEY_TRIPLEX, 0.4, (255, 255, 255), 1)    
-                img_ndarray = cv2.putText(img_ndarray, str(expMax), (expTime_frame_end[0],expTime_frame_end[1]+15), cv2.FONT_HERSHEY_TRIPLEX, 0.4, (255, 255, 255), 1)    
-
-            if window.sensIso_display_flag:
-                # add progress bar
-                sensIso_length = int((imageMsg.gain - sensMin) / (sensMax - sensMin) * progress_bar_length)
-                img_ndarray = cv2.rectangle(img_ndarray, sensIso_frame_start, (left_x +sensIso_length, sensIso_frame_end[1]), (0, 0, 255),-1)
-                # add progress bar frame
-                img_ndarray = cv2.rectangle(img_ndarray, sensIso_frame_start, sensIso_frame_end, (255, 255, 255),2)
-                # add description
-                img_ndarray = cv2.putText(img_ndarray, 'sensIso', (sensIso_frame_end[0]+5, sensIso_frame_start[1]), cv2.FONT_HERSHEY_TRIPLEX, 0.5, (0, 0, 255), 1)    
-                img_ndarray = cv2.putText(img_ndarray, str(sensMin), (sensIso_frame_start[0],sensIso_frame_end[1]+15), cv2.FONT_HERSHEY_TRIPLEX, 0.4, (255, 255, 255), 1)    
-                img_ndarray = cv2.putText(img_ndarray, str(sensMax), (sensIso_frame_end[0],sensIso_frame_end[1]+15), cv2.FONT_HERSHEY_TRIPLEX, 0.4, (255, 255, 255), 1)    
-
-
-            # add latency text
-            if window.latencyDevice_display_flag:
-                img_ndarray = cv2.putText(img_ndarray, latencyDevice_display, latencyDevice_coor, cv2.FONT_HERSHEY_TRIPLEX, 0.5, (127, 0, 255), 1)  
+            img_ndarray = add_ui_on_ndarray(img_ndarray, imageMsg.exposureUSec, imageMsg.gain, latencyDevice_display, latencyHost_display,
+                                            window.expTime_display_flag,
+                                            window.sensIso_display_flag,
+                                            window.latencyDevice_display_flag,
+                                            window.latencyHost_display_flag)
             
-            if window.latencyHost_display_flag:
-                img_ndarray = cv2.putText(img_ndarray, latencyHost_display, latencyHost_coor, cv2.FONT_HERSHEY_TRIPLEX, 0.5, (127, 0, 255), 1)    
-
 
             if not window.is_done:
 
                 update_frame(imageName, img_ndarray)
-                if(imageName == 'S0/cama' and window.cb_cama.checked):
+                if(('cama' in imageName) and window.cb_cama.checked):
                     update_proxy(window.proxy_1,all_display)
-                if(imageName == 'S0/camb' and window.cb_camb.checked):
+                if(('camb' in imageName) and window.cb_camb.checked):
                     update_proxy(window.proxy_2,all_display)
-                if(imageName == 'S0/camc' and window.cb_camc.checked):
+                if(('camc' in imageName) and window.cb_camc.checked):
                     update_proxy(window.proxy_3,all_display)
-                if(imageName == 'S0/camd' and window.cb_camd.checked):
+                if(('camd' in imageName) and window.cb_camd.checked):
                     update_proxy(window.proxy_4,all_display)
                 
         if not window.is_done:
             if flag_dict['vio_status']:
-                update_proxy(window.proxy_vio, vio_msg)
-            else:
-                update_proxy(window.proxy_vio, "vio is not on")
+                update_proxy(window.proxy_vio, vio_sub.vio_msg)
+
 
         window.window.post_redraw()
+
 
 
     # finalize eCAL API
@@ -604,7 +492,7 @@ def main():
     
     choose_app.run()    
 
-    # main app
+    # initialised main app
     app = gui.Application.instance
     app.initialize()
     
@@ -616,12 +504,10 @@ def main():
     
     time.sleep(3)
     
+    # run main app
     app.run()
     
         
 
 if __name__ == "__main__":
-
     main() 
-
-
