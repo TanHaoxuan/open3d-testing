@@ -11,6 +11,8 @@ import odometry3d_capnp as eCALOdometry3d
 import image_capnp as eCALImage
 import imu_capnp as eCALImu
 
+import time
+
 import queue
 from threading import Lock
 
@@ -314,7 +316,17 @@ class VioSubscriber:
         self.vio_msg = ""
         self.vio_sub.set_callback(self._vio_callback)
 
-    def _vio_callback(self, topic_name, msg, time):
+        self.position_x = 0.0
+        self.position_y = 0.0
+        self.position_z = 0.0
+
+        self.orientation_x = 0.0
+        self.orientation_y = 0.0
+        self.orientation_z = 0.0
+        self.orientation_w = 0.0
+
+
+    def _vio_callback(self, topic_name, msg, time_ecal):
 
         # need to remove the .decode() function within the Python API of ecal.core.subscriber ByteSubscriber
         
@@ -326,12 +338,23 @@ class VioSubscriber:
             #     print(f"velocityFrame = {odometryMsg.velocityFrame}")
             #     first_message = False
 
+            # read in data
+            self.position_x = odometryMsg.pose.position.x
+            self.position_y = odometryMsg.pose.position.y
+            self.position_z = odometryMsg.pose.position.z
+
+            self.orientation_x = odometryMsg.pose.orientation.x
+            self.orientation_y = odometryMsg.pose.orientation.y
+            self.orientation_z = odometryMsg.pose.orientation.z
+            self.orientation_w = odometryMsg.pose.orientation.w
+
+            # text
             position_msg = f"position: \n {odometryMsg.pose.position.x:.4f}, {odometryMsg.pose.position.y:.4f}, {odometryMsg.pose.position.z:.4f}"
             orientation_msg = f"orientation: \n  {odometryMsg.pose.orientation.w:.4f}, {odometryMsg.pose.orientation.x:.4f}, {odometryMsg.pose.orientation.y:.4f}, {odometryMsg.pose.orientation.z:.4f}"
             
             device_latency_msg = f"device latency = {odometryMsg.header.latencyDevice / 1e6 : .2f} ms"
             
-            vio_host_latency = monotonic() *1e9 - odometryMsg.header.stamp 
+            vio_host_latency = time.monotonic() *1e9 - odometryMsg.header.stamp 
             host_latency_msg = f"host latency = {vio_host_latency / 1e6 :.2f} ms"
             
             self.vio_msg = position_msg + "\n" + orientation_msg + "\n" + device_latency_msg + "\n" + host_latency_msg
